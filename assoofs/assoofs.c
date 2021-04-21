@@ -94,6 +94,7 @@ static struct dentry *assoofs_mount(struct file_system_type *fs_type, int flags,
     printk(KERN_INFO "assoofs_mount request\n");
     struct dentry *ret = mount_bdev(fs_type, flags, dev_name, data, assoofs_fill_super);
     // Control de errores a partir del valor de ret. En este caso se puede utilizar la macro IS_ERR: if (IS_ERR(ret)) ...
+    return NULL;
 }
 
 /*
@@ -110,6 +111,7 @@ static int __init assoofs_init(void) {
     printk(KERN_INFO "assoofs_init request\n");
     int ret = register_filesystem(&assoofs_type);
     // Control de errores a partir del valor de ret
+    return NULL;
 }
 
 static void __exit assoofs_exit(void) {
@@ -118,5 +120,5 @@ static void __exit assoofs_exit(void) {
     // Control de errores a partir del valor de ret
 }
 
-module_iit(assoofs_init);
-module_exit(assoofs_exit);n
+module_init(assoofs_init);
+module_exit(assoofs_exit);
