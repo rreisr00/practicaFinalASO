@@ -75,15 +75,74 @@ static const struct super_operations assoofs_sops = {
     .drop_inode = generic_delete_inode,
 };
 
+struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64_t inode_no){
+	struct assoofs_inode_info *inode_info = NULL;
+	struct buffer_head *bh;
+
+	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
+	inode_info = (struct assoofs_inode_info *) bh->b_data;
+
+	struct assoofs_super_block_info *afs_sb = sb->s_fs_info;
+	struct assoofs_inode_info *buffer = NULL;
+	int i;
+	for(i = 0; i < afs_sb->inodes_count; i++){
+		if(inode_info->inode_no == inode_no){
+			buffer = kmalloc(sizeof(struct assoofs_inode_info), GFP_KERNEL);
+			memcpy(buffer, inode_info, sizeof(*buffer));
+			break;
+		}
+		inode_info++;
+	}
+	brelse(bh);
+	return buffer;
+}
+
 /*
  *  Inicialización del superbloque
  */
 int assoofs_fill_super(struct super_block *sb, void *data, int silent) {   
     printk(KERN_INFO "assoofs_fill_super request\n");
-    // 1.- Leer la información persistente del superbloque del dispositivo de bloques  
+    // 1.- Leer la información persistente del superbloque del dispositivo de bloques
+    struct buffer_head *bh;
+    struct assoofs_super_block_info *assoofs_sb;
+    bh = sb_bread(sb, ASSOOFS_SUPERBLOCK_BLOCK_NUMBER);
+    assoofs_sb = (struct assoofs_super_block_info *) bh->b_data;
+    
+
     // 2.- Comprobar los parámetros del superbloque
+    if(assoofs_sb->magic == ASSOOFS_MAGIC){
+	    printk(KERN_INFO "Numero magico de assoofs valido\n");
+    }else{
+	    printk(KERN_INFO "Numero magico invalido\n");
+	    return -EPERM;
+    }
+
+    if(assoofs_sb->block_size == ASSOOFS_DEFAULT_BLOCK_SIZE){
+	    printk(KERN_INFO "Tamaño de bloque correcto\n");
+    }else {
+	    printk(KERN_INFO "Tamaño de bloque incorrecto\n");
+	    return -EPERM;
+    }
+
     // 3.- Escribir la información persistente leída del dispositivo de bloques en el superbloque sb, incluído el campo s_op con las operaciones que soporta.
+    sb->s_magic = assoofs_sb->magic;
+    sb->s_maxbytes = assoofs_sb->block_size;
+    sb->s_op = &assoofs_sops;
+    sb->s_fs_info = assoofs_sb;
     // 4.- Crear el inodo raíz y asignarle operaciones sobre inodos (i_op) y sobre directorios (i_fop)
+    
+    struct inode *root_inode;
+    root_inode = new_inode(sb);
+
+    inode_init_owner(root_inode, NULL, S_IFDIR);
+    
+    root_inode->i_ino = ASSOOFS_ROOTDIR_INODE_NUMBER;
+    root_inode->i_sb = sb;
+    root_inode->i_op = &assoofs_inode_ops;
+    root_inode->i_fop = &assoofs_dir_operations;
+    root_inode->i_atime = root_inode->i_mtime = root_inode->i_ctime = current_time(root_inode);
+    root_inode->i_private = assoofs_get_inode_info(sb, ASSOOFS_ROOTDIR_INODE_NUMBER);
+    brelse(bh);
     return 0;
 }
 
@@ -94,7 +153,7 @@ static struct dentry *assoofs_mount(struct file_system_type *fs_type, int flags,
     printk(KERN_INFO "assoofs_mount request\n");
     struct dentry *ret = mount_bdev(fs_type, flags, dev_name, data, assoofs_fill_super);
     // Control de errores a partir del valor de ret. En este caso se puede utilizar la macro IS_ERR: if (IS_ERR(ret)) ...
-    return NULL;
+    return ret;
 }
 
 /*
@@ -111,7 +170,7 @@ static int __init assoofs_init(void) {
     printk(KERN_INFO "assoofs_init request\n");
     int ret = register_filesystem(&assoofs_type);
     // Control de errores a partir del valor de ret
-    return NULL;
+    return ret;
 }
 
 static void __exit assoofs_exit(void) {
