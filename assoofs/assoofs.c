@@ -114,14 +114,14 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent) {
 	    printk(KERN_INFO "Numero magico de assoofs valido\n");
     }else{
 	    printk(KERN_INFO "Numero magico invalido\n");
-	    return -EPERM;
+	    //return -EPERM;
     }
 
     if(assoofs_sb->block_size == ASSOOFS_DEFAULT_BLOCK_SIZE){
 	    printk(KERN_INFO "Tamaño de bloque correcto\n");
     }else {
 	    printk(KERN_INFO "Tamaño de bloque incorrecto\n");
-	    return -EPERM;
+	    //return -EPERM;
     }
 
     // 3.- Escribir la información persistente leída del dispositivo de bloques en el superbloque sb, incluído el campo s_op con las operaciones que soporta.
@@ -142,6 +142,8 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent) {
     root_inode->i_fop = &assoofs_dir_operations;
     root_inode->i_atime = root_inode->i_mtime = root_inode->i_ctime = current_time(root_inode);
     root_inode->i_private = assoofs_get_inode_info(sb, ASSOOFS_ROOTDIR_INODE_NUMBER);
+    
+    sb->s_root = d_make_root(root_inode);
     brelse(bh);
     return 0;
 }
