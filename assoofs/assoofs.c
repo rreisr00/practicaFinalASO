@@ -43,6 +43,8 @@ static int assoofs_iterate(struct file *filp, struct dir_context *ctx) {
 /*
  *  Operaciones sobre inodos
  */
+struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64_t inode_no);
+static struct inode *assoofs_get_inode(struct super_block *sb, int ino);
 static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags);
 static int assoofs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
@@ -52,8 +54,54 @@ static struct inode_operations assoofs_inode_ops = {
     .mkdir = assoofs_mkdir,
 };
 
+static struct inode *assoofs_get_inode(struct super_block *sb, int ino){
+	struct inode *inode;
+	inode = new_inode(sb);
+	struct assoofs_inode_info *inode_info;
+	inode_info = assoofs_get_inode_info(sb, ino);
+
+
+	if(S_ISDIR(inode_info->mode)){
+		inode->i_fop = &assoofs_dir_operations;
+	}else if(S_ISREG(inode_info->mode)){
+		inode->i_fop = &assoofs_file_operations;
+	}else{
+		printk(KERN_ERR "Unknown inode type. Neither a directory nor a file\n");
+	}
+
+	inode->i_ino = inode_info->inode_no;
+	inode->i_sb = sb;
+	inode->i_op = &assoofs_inode_ops;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
+	inode->i_private = inode_info;
+
+	return inode;
+
+}
+
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
     printk(KERN_INFO "Lookup request\n");
+
+    //Accedemos al bloque de disco apuntado por parent_inode
+    struct assoofs_inode_info *parent_info = parent_inode->i_private;
+    struct super_block *sb = parent_inode->i_sb;
+    struct buffer_head *bh;
+    bh = sb_bread(sb, parent_info->data_block_number);
+
+    //Recorremos el contenido buscando la entrada que corresponda al nombre
+    struct assoofs_dir_record_entry *record;
+    record = (struct assoofs_dir_record_entry *) bh->b_data;
+
+	    int i;
+    for(i = 0; i < parent_info->dir_children_count; i++){
+	    if(!strcmp(record->filename, child_dentry->d_name.name)){
+		    struct inode *inode = assoofs_get_inode(sb, record->inode_no);
+		    inode_init_owner(inode, parent_inode, ((struct assoofs_inode_info *)inode->i_private)->mode);
+		    d_add(child_dentry, inode);
+		    return NULL;
+	    }
+	    record++;
+    }
     return NULL;
 }
 
@@ -114,14 +162,14 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent) {
 	    printk(KERN_INFO "Numero magico de assoofs valido\n");
     }else{
 	    printk(KERN_INFO "Numero magico invalido\n");
-	    //return -EPERM;
+	    return -EPERM;
     }
 
     if(assoofs_sb->block_size == ASSOOFS_DEFAULT_BLOCK_SIZE){
 	    printk(KERN_INFO "Tamaño de bloque correcto\n");
     }else {
 	    printk(KERN_INFO "Tamaño de bloque incorrecto\n");
-	    //return -EPERM;
+	    return -EPERM;
     }
 
     // 3.- Escribir la información persistente leída del dispositivo de bloques en el superbloque sb, incluído el campo s_op con las operaciones que soporta.
