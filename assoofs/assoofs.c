@@ -9,6 +9,10 @@
 /*
  *  Operaciones sobre ficheros
  */
+void assoofs_save_sb_info(struct super_block *vsb);
+void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode);
+int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *inode_info);
+struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, struct assoofs_inode_info *start, struct assoofs_inode_info *search);
 ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t * ppos);
 ssize_t assoofs_write(struct file * filp, const char __user * buf, size_t len, loff_t * ppos);
 const struct file_operations assoofs_file_operations = {
@@ -18,11 +22,55 @@ const struct file_operations assoofs_file_operations = {
 
 ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t * ppos) {
     printk(KERN_INFO "Read request\n");
-    return 0;
+    //Accedemos a la informacion persistente del archivo
+    struct assoofs_inode_info *inode_info = filp->f_path.dentry->d_inode->i_private;
+
+    //Combrobamos si hemos ppos es mayor que el tamaño del archivo
+    if(*ppos >= inode_info->file_size){
+	    return 0;
+    }
+
+    //Accedemos al contenido del archivo
+    struct buffer_head *bh;
+    char *buffer;
+    bh = sb_bread(filp->f_path.dentry->d_inode->i_sb, inode_info->data_block_number);
+    buffer = (char *) bh->b_data;
+
+    //Copiamos todo al buffer usuario
+    int nbytes;
+    nbytes = min((size_t) inode_info->file_size, len);
+    copy_to_user(buf, buffer, nbytes);
+    *ppos += nbytes;
+    return nbytes;
 }
 
 ssize_t assoofs_write(struct file * filp, const char __user * buf, size_t len, loff_t * ppos) {
     printk(KERN_INFO "Write request\n");
+    //Accedemos a la informacion persistente del archivo
+    struct inode *inode = filp->f_path.dentry->d_inode;
+    struct assoofs_inode_info *inode_info = inode->i_private;
+    struct super_block *sb = inode->i_sb;
+    
+    //Accedemos al contenido del archivo
+    struct buffer_head *bh;
+    char *buffer; 
+    bh = sb_bread(sb, inode_info->data_block_number);
+    buffer = (char *) bh->b_data;
+    
+    //Copiamos al archivo
+    buffer += *ppos;
+    copy_from_user(buffer, buf, len);
+    *ppos += len;
+
+    //Marcamos el bloque como sucio y sincronizamos
+    mark_buffer_dirty(bh);
+    sync_dirty_buffer(bh);
+
+    //Actualizamos el tamaño
+    inode_info->file_size = *ppos;
+    assoofs_save_inode_info(sb, inode_info);
+
+    brelse(bh);
     return len;
 }
 
@@ -37,6 +85,37 @@ const struct file_operations assoofs_dir_operations = {
 
 static int assoofs_iterate(struct file *filp, struct dir_context *ctx) {
     printk(KERN_INFO "Iterate request\n");
+
+    //Accedemos al inodo y cogemos la parte persistente
+    struct inode *inode;
+    struct super_block *sb;
+    struct assoofs_inode_info *inode_info;
+
+    inode = filp->f_path.dentry->d_inode;
+    sb = inode->i_sb;
+    inode_info = inode->i_private;
+
+    //Hacemos comprobaciones
+    if(ctx->pos){ 
+	    return 0;
+    }
+
+    if(!(S_ISDIR(inode_info->mode))){
+	    return 0;
+    }
+
+    //Accedemos al bloque correspondiente
+    struct buffer_head *bh;
+    bh = sb_bread(sb, inode_info->data_block_number);
+    struct assoofs_dir_record_entry *record;
+    record = (struct assoofs_dir_record_entry *) bh->b_data;
+    int i;
+    for(i = 0; i < inode_info->dir_children_count ; i++){
+	    dir_emit(ctx, record->filename, ASSOOFS_FILENAME_MAXLEN, record->inode_no, DT_UNKNOWN);
+	    ctx->pos += sizeof(struct assoofs_dir_record_entry);
+	    record++;
+    }
+    brelse(bh);
     return 0;
 }
 
@@ -49,10 +128,6 @@ static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags);
 static int assoofs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
 int assoofs_sb_get_a_freeblock(struct super_block *sb, uint64_t *block);
-void assoofs_save_sb_info(struct super_block *vsb);
-void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *inode);
-int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *inode_info);
-struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, struct assoofs_inode_info *start, struct assoofs_inode_info *search);
 
 static struct inode_operations assoofs_inode_ops = {
     .create = assoofs_create,
@@ -104,9 +179,7 @@ struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_d
 		    struct inode *inode = assoofs_get_inode(sb, record->inode_no);
 		    inode_init_owner(inode, parent_inode, ((struct assoofs_inode_info *)inode->i_private)->mode);
 		    d_add(child_dentry, inode);
-		    char *m;
-		    sprintf(m, "Look up request: inode number %ld", inode->i_ino);
-		    printk(KERN_INFO "%s\n", m);
+		    printk(KERN_INFO "Se ha encontrado la entrada");
 		    return NULL;
 	    }
 	    record++;
