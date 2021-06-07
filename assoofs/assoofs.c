@@ -372,10 +372,10 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 	struct buffer_head *bh;
 	printk(KERN_INFO "Save inode info request\n");
 
-	//Accedemos al almacen de inodos
+	//Accedemos al almacen de inodos en disco
 	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
 	inode_disk = (struct assoofs_inode_info *)bh->b_data;
-	//Buscamos la informacion persistente del inodo
+	//Buscamos el puntero a la informacion persistente del inodo en disco
 	inode_pos = assoofs_search_inode_info(sb, inode_disk, inode_info);
 	if(inode_pos == NULL){
 		printk(KERN_ERR "Informacion del inodo no encontrado\n");
@@ -392,8 +392,8 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 }
 
 /**
- * Buscamos la informacion persistente
- * @param sb supervloque
+ * Buscamos el puntero a la informacion persistente de inodo
+ * @param sb superbloque
  * @param start inodo donde empieza
  * @param search inodo que se busca
  * @return puntero a la informacion persistente del inodo
@@ -417,6 +417,13 @@ struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, str
 	}
 }
 
+/**
+ * Permite crear inodos para directorios
+ * @param dir Directorio donde se creará el nuevo directorio
+ * @param dentry entrada del directorio en el padre
+ * @param mode modo del directorio
+ * @return 0 o -1 dependiendo de si sale bien
+ */
 static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode) {
     printk(KERN_INFO "New directory request\n");
     //Estructura del inodo
@@ -454,7 +461,7 @@ static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode
 
     inode->i_fop = &assoofs_dir_operations;
 
-    inode_init_owner(inode, dir, mode);
+    inode_init_owner(inode, dir, S_IFDIR | mode);
     d_add(dentry, inode);
 
     //Comprobamos si quedan espacios libres
@@ -474,6 +481,7 @@ static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode
     dir_contents += parent_inode_info->dir_children_count;
     dir_contents->inode_no = inode_info->inode_no;
 
+    //Marcamos el bloque como sucio y sincronizamos
     strcpy(dir_contents->filename, dentry->d_name.name);
     mark_buffer_dirty(bh);
     sync_dirty_buffer(bh);
