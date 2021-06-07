@@ -418,7 +418,7 @@ int assoofs_save_inode_info(struct super_block *sb, struct assoofs_inode_info *i
  */
 struct assoofs_inode_info *assoofs_search_inode_info(struct super_block *sb, struct assoofs_inode_info *start, struct assoofs_inode_info *search){
 	uint64_t count = 0;
-	uint64_t inode_count = ((struct assoofs_super_block_info *)sb->s_fs_info)->inodes_count;
+	uint64_t inodes_count = ((struct assoofs_super_block_info *)sb->s_fs_info)->inodes_count;
 	printk(KERN_INFO "Search inode info request\n");
 	//Buscamos el inodo que tenga el mismo número de inodo
 	while(start->inode_no != search->inode_no && count < inodes_count){
