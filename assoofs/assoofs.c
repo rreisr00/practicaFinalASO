@@ -23,6 +23,12 @@ const struct file_operations assoofs_file_operations = {
     .write = assoofs_write,
 };
 
+/**
+ * Permite leer de un archivo
+ * @param filp fichero a leer
+ * @param __user direccion del buffer
+ * @return tamaño de fichero
+ */
 ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t * ppos) {
     printk(KERN_INFO "Read request\n");
     //Accedemos a la informacion persistente del archivo
@@ -39,7 +45,7 @@ ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t *
     bh = sb_bread(filp->f_path.dentry->d_inode->i_sb, inode_info->data_block_number);
     buffer = (char *) bh->b_data;
 
-    //Copiamos los datos al buffer usuario para leerlos
+    //Copiamos los datos al buffer usuario para leerlos y devolvemos el numero de bytes leidos
     int nbytes;
     nbytes = min((size_t) inode_info->file_size, len);
     copy_to_user(buf, buffer, nbytes);
@@ -47,17 +53,21 @@ ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t *
     return nbytes;
 }
 
+/**
+ * Permite escribir en un archivo
+ * @param filp archivo
+ * @param __user direccion del buffer
+ * @return longitud del archivo
+ */
 ssize_t assoofs_write(struct file * filp, const char __user * buf, size_t len, loff_t * ppos) {
     printk(KERN_INFO "Write request\n");
     //Accedemos a la informacion persistente del archivo
-    struct inode *inode = filp->f_path.dentry->d_inode;
-    struct assoofs_inode_info *inode_info = inode->i_private;
-    struct super_block *sb = inode->i_sb;
+    struct assoofs_inode_info *inode_info = filp->f_path.dentry->d_inode->i_private;
     
     //Accedemos al contenido del archivo
     struct buffer_head *bh;
     char *buffer; 
-    bh = sb_bread(sb, inode_info->data_block_number);
+    bh = sb_bread(filp->f_path.dentry->d_inode->i_sb, inode_info->data_block_number);
     buffer = (char *) bh->b_data;
     
     //Copiamos al archivo
@@ -71,8 +81,7 @@ ssize_t assoofs_write(struct file * filp, const char __user * buf, size_t len, l
 
     //Actualizamos el tamaño
     inode_info->file_size = *ppos;
-    assoofs_save_inode_info(sb, inode_info);
-
+    assoofs_save_inode_info(filp->f_path.dentry->d_inode->i_sb, inode_info);
     brelse(bh);
     return len;
 }
@@ -86,6 +95,12 @@ const struct file_operations assoofs_dir_operations = {
     .iterate = assoofs_iterate,
 };
 
+/**
+ * Permite mostrar el contenido de un directorio
+ * @param filp directorio
+ * @param ctx contexto
+ * @return 0 o -1, si sale todo bien o no
+ */
 static int assoofs_iterate(struct file *filp, struct dir_context *ctx) {
     printk(KERN_INFO "Iterate request\n");
 
@@ -99,21 +114,24 @@ static int assoofs_iterate(struct file *filp, struct dir_context *ctx) {
     inode_info = inode->i_private;
 
     //Hacemos comprobaciones
+    //Si la pos del contexto es distinto de 0
     if(ctx->pos){ 
-	    return 0;
+	    return -1;
     }
 
+    //Si el archivo no es un directorio
     if(!(S_ISDIR(inode_info->mode))){
-	    return 0;
+	    return -1;
     }
 
-    //Accedemos al bloque correspondiente
+    //Accedemos al bloque correspondiente donde se encuentra la informacion del directorio
     struct buffer_head *bh;
     bh = sb_bread(sb, inode_info->data_block_number);
     struct assoofs_dir_record_entry *record;
     record = (struct assoofs_dir_record_entry *) bh->b_data;
     int i;
     for(i = 0; i < inode_info->dir_children_count ; i++){
+        //Se añaden las entradas del directorio al contexto y se incrementa la posición
 	    dir_emit(ctx, record->filename, ASSOOFS_FILENAME_MAXLEN, record->inode_no, DT_UNKNOWN);
 	    ctx->pos += sizeof(struct assoofs_dir_record_entry);
 	    record++;
