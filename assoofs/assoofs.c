@@ -40,6 +40,9 @@ ssize_t assoofs_read(struct file * filp, char __user * buf, size_t len, loff_t *
     int nbytes;
 
     printk(KERN_INFO "Read request\n");
+
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
     //Accedemos a la informacion persistente del archivo
     inode_info = filp->f_path.dentry->d_inode->i_private;
 
@@ -72,6 +75,9 @@ ssize_t assoofs_write(struct file * filp, const char __user * buf, size_t len, l
     char *buffer;
     printk(KERN_INFO "Write request\n");
     //Accedemos a la informacion persistente del archivo
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
+
     inode_info = filp->f_path.dentry->d_inode->i_private;
     
     //Accedemos al contenido del archivo
@@ -119,6 +125,9 @@ static int assoofs_iterate(struct file *filp, struct dir_context *ctx) {
     int i;
 
     printk(KERN_INFO "Iterate request\n");
+
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
 
     //Accedemos al inodo y cogemos la parte persistente
     inode = filp->f_path.dentry->d_inode;
@@ -177,8 +186,11 @@ static struct inode *assoofs_get_inode(struct super_block *sb, int ino){
 	struct inode *inode;
     struct assoofs_inode_info *inode_info;
 
+
     //Creamos nuevo inodo
 	inode = new_inode(sb);
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
 	//Usamos la funcion auxiliar para conseguir la informacion del inodo en el almacen de inodos
 	inode_info = assoofs_get_inode_info(sb, ino);
 
@@ -211,13 +223,17 @@ static struct inode *assoofs_get_inode(struct super_block *sb, int ino){
  */
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
 
-    struct assoofs_inode_info *parent_info = parent_inode->i_private;
+    struct assoofs_inode_info *parent_info;
     struct super_block *sb = parent_inode->i_sb;
     struct buffer_head *bh;
     struct assoofs_dir_record_entry *record;
     int i;
 
     printk(KERN_INFO "Lookup request\n");
+
+    //Reservamos memoria en cache para la informacion persistente
+    parent_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
+    parent_info = parent_inode->i_private;
 
     //Accedemos al bloque de disco apuntado por parent_inode
     bh = sb_bread(sb, parent_info->data_block_number);
@@ -275,9 +291,11 @@ static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode
 	    printk(KERN_ERR "No se admiten mas inodos.\n");
 	    return -1;
     }
-    
+
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
+
     //Añadimos la informacion persistente al inodo
-    inode_info = kmalloc(sizeof(struct assoofs_inode_info), GFP_KERNEL);
     inode_info->inode_no = inode->i_ino;
     inode_info->mode = mode;
     inode_info->file_size = 0;
@@ -301,6 +319,8 @@ static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode
     assoofs_add_inode_info(sb, inode_info);
 
     //Añadimos la informacion del inodo al directorio padre
+    //Reservamos memoria en cache para la informacion persistente
+    parent_inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
     parent_inode_info = dir->i_private;
     bh = sb_bread(sb, parent_inode_info->data_block_number);
     dir_contents = (struct assoofs_dir_record_entry *)bh->b_data;
@@ -381,6 +401,9 @@ void assoofs_add_inode_info(struct super_block *sb, struct assoofs_inode_info *i
 
 	//Leemos el bloque de los inodos en disco
 	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
+
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
 
 	//Obtenemos un puntero al almacen y colocamos al final el nuevo inodo
 	inode_info = (struct assoofs_inode_info *) bh->b_data;
@@ -493,7 +516,7 @@ static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode
     }
     
     //Añadimos la informacion persistente al inodo
-    inode_info = kmalloc(sizeof(struct assoofs_inode_info), GFP_KERNEL);
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
     inode_info->inode_no = inode->i_ino;
     inode_info->mode = S_IFDIR | mode;
     inode_info->dir_children_count = 0;
@@ -533,12 +556,25 @@ static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode
     return 0;
 }
 
+
+/*
+ * Liberar espacio de inodos
+ */
+int assoofs_destroy_inode(struct inode *inode){
+    struct assoofs_inode *inode_info = inode->i_private;
+    printk(KERN_INFO "Freeing private data of inode %p (%lu)\n", inode_info, inode->i_ino);
+    kmem_cache_free(assoofs_inode_cache, inode_info);
+    return 0;
+}
+
 /*
  *  Operaciones sobre el superbloque
  */
 static const struct super_operations assoofs_sops = {
-    .drop_inode = generic_delete_inode,
+    //.drop_inode = generic_delete_inode,
+    .drop_inode = assoofs_destroy_inode,
 };
+
 
 /**
  * Permite obtener la informacion persistente del inodo que esta el la posicion inode_no
@@ -548,11 +584,14 @@ static const struct super_operations assoofs_sops = {
  */
 struct assoofs_inode_info *assoofs_get_inode_info(struct super_block *sb, uint64_t inode_no){
     //Se accede a disco al almacen de inodos para conseguir la informacion de los inodos
-	struct assoofs_inode_info *inode_info = NULL;
+	struct assoofs_inode_info *inode_info;
 	struct buffer_head *bh;
     struct assoofs_super_block_info *afs_sb;
     struct assoofs_inode_info *buffer;
     int i;
+
+    //Reservamos memoria en cache para la informacion persistente
+    inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
 
 	bh = sb_bread(sb, ASSOOFS_INODESTORE_BLOCK_NUMBER);
 	inode_info = (struct assoofs_inode_info *) bh->b_data;
@@ -656,7 +695,7 @@ static int __init assoofs_init(void) {
     printk(KERN_INFO "assoofs_init request\n");
     ret = register_filesystem(&assoofs_type);
     //Inicializar cache
-    assoofs_inode_cache = kmem_cache_create("assoofs_inode_cache", sizeof(struct struct assoofs_inode_info), 0, (SLAB_RECLAIM_ACCOUNT | SLAB_MEM_SPREAD), NULL);
+    assoofs_inode_cache = kmem_cache_create("assoofs_inode_cache", sizeof(struct assoofs_inode_info), 0, (SLAB_RECLAIM_ACCOUNT | SLAB_MEM_SPREAD), NULL);
     // Control de errores a partir del valor de ret
     return ret;
 }
