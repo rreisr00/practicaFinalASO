@@ -179,13 +179,17 @@ static struct inode *assoofs_get_inode(struct super_block *sb, int ino);
 static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
 struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags);
 static int assoofs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
+static int assoofs_unlink(struct inode *dir, struct dentry *dentry);
 int assoofs_sb_get_a_freeblock(struct super_block *sb, uint64_t *block);
 
 static struct inode_operations assoofs_inode_ops = {
     .create = assoofs_create,
     .lookup = assoofs_lookup,
     .mkdir = assoofs_mkdir,
+    .unlink = assoofs_unlink,
 };
+
+
 
 /**
  * Permite crear un inodo con la informacion persistente
@@ -314,6 +318,7 @@ static int assoofs_create(struct inode *dir, struct dentry *dentry, umode_t mode
     //Añadimos la informacion persistente al inodo
     inode_info->inode_no = inode->i_ino;
     inode_info->mode = mode;
+    inode_info->free = 1;
     inode_info->file_size = 0;
     inode->i_private = inode_info;
 
@@ -548,6 +553,7 @@ static int assoofs_mkdir(struct inode *dir , struct dentry *dentry, umode_t mode
     inode_info = kmem_cache_alloc(assoofs_inode_cache, GFP_KERNEL);
     inode_info->inode_no = inode->i_ino;
     inode_info->mode = S_IFDIR | mode;
+    inode_info->free = 1;
     inode_info->dir_children_count = 0;
     inode->i_private = inode_info;
 

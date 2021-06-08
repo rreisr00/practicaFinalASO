@@ -36,6 +36,7 @@ struct assoofs_inode_info {
     mode_t mode;
     uint64_t inode_no;
     uint64_t data_block_number;
+    uint8_t free;
     union {
         uint64_t file_size;
         uint64_t dir_children_count;

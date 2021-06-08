@@ -39,6 +39,7 @@ static int write_root_inode(int fd) {
     root_inode.mode = S_IFDIR;
     root_inode.inode_no = ASSOOFS_ROOTDIR_INODE_NUMBER;
     root_inode.data_block_number = ASSOOFS_ROOTDIR_BLOCK_NUMBER;
+    root_inode.free = 1;
     root_inode.dir_children_count = 1;
 
     ret = write(fd, &root_inode, sizeof(root_inode));
