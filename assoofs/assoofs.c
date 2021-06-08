@@ -668,8 +668,8 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent) {
 
     bh = sb_bread(sb, ASSOOFS_SUPERBLOCK_BLOCK_NUMBER);
     assoofs_sb = (struct assoofs_super_block_info *) bh->b_data;
-    
 
+    mutex_unlock(&assoofs_sb_lock);
     // 2.- Comprobar los parámetros del superbloque
     if(assoofs_sb->magic == ASSOOFS_MAGIC){
 	    printk(KERN_INFO "Numero magico de assoofs valido\n");
@@ -705,7 +705,6 @@ int assoofs_fill_super(struct super_block *sb, void *data, int silent) {
     
     sb->s_root = d_make_root(root_inode);
     brelse(bh);
-    mutex_unlock(&assoofs_sb_lock);
     return 0;
 }
 
