@@ -9,14 +9,8 @@ const int ASSOOFS_ROOTDIR_BLOCK_NUMBER = 2;
 const int ASSOOFS_ROOTDIR_INODE_NUMBER = 1;
 const int ASSOOFS_MAX_FILESYSTEM_OBJECTS_SUPPORTED = 64;
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Rubén Junior Dos Reis Do Rosario");
 
-//Cache de inodos
-static struct kmem_cache *assoofs_inode_cache;
 
-//Semáforos
-static DEFINE_MUTEX(assoofs_sb_lock);
 
 struct assoofs_super_block_info {
     uint64_t version;

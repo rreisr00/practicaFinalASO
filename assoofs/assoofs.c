@@ -6,7 +6,14 @@
 #include <linux/slab.h>         /* kmem_cache            */
 #include "assoofs.h"
 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Rubén Junior Dos Reis Do Rosario");
 
+//Cache de inodos
+static struct kmem_cache *assoofs_inode_cache;
+
+//Semáforos
+static DEFINE_MUTEX(assoofs_sb_lock);
 
 /*
  * Otras funciones
@@ -252,6 +259,8 @@ struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_d
     //Accedemos al bloque de disco apuntado por parent_inode
     bh = sb_bread(sb, parent_info->data_block_number);
 
+    mutex_unlock(&assoofs_sb_lock);
+
     //Recorremos el contenido buscando la entrada que corresponda al nombre
     record = (struct assoofs_dir_record_entry *) bh->b_data;
     for(i = 0; i < parent_info->dir_children_count; i++){
@@ -260,13 +269,12 @@ struct dentry *assoofs_lookup(struct inode *parent_inode, struct dentry *child_d
 		    inode_init_owner(inode, parent_inode, ((struct assoofs_inode_info *)inode->i_private)->mode);
 		    d_add(child_dentry, inode);
 		    printk(KERN_INFO "Se ha encontrado la entrada");
-		    mutex_unlock(&assoofs_sb_lock);
 		    return NULL;
 	    }
 	    record++;
     }
     printk(KERN_INFO "No se ha encontrado la entrada");
-    mutex_unlock(&assoofs_sb_lock);
+
     return NULL;
 }
 
